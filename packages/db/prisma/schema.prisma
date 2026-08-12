@@ -3,9 +3,19 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Direct (non-pooled) connection for migrations. Neon's pooler (pgbouncer)
+  // can wedge Prisma's migration advisory lock; the direct host avoids it.
+  // Falls back to DATABASE_URL when DIRECT_URL is not set.
+  directUrl = env("DIRECT_URL")
 }
+
+// ---------------------------------------------------------------------------
+// Better Auth models (managed by Better Auth — do not repurpose).
+// NOTE: `Verification` below belongs to Better Auth (email-verification tokens).
+// The vendor-onboarding check results live in `VerificationCheck`.
+// ---------------------------------------------------------------------------
 
 model User {
   id            String    @id
@@ -13,10 +23,23 @@ model User {
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
+  role          UserRole  @default(VENDOR)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+
+  vendorsCreated  Vendor[]           @relation("VendorCreatedBy")
+  approvals       ApprovalTask[]     @relation("ApprovalDecidedBy")
+  documents        Document[]         @relation("DocumentUploadedBy")
+  auditLogs        AuditLog[]         @relation("AuditActor")
+  sentInvitations  VendorInvitation[] @relation("InvitationSentBy")
+  businessRequests BusinessRequest[]  @relation("RequestedBy")
+  notifications    Notification[]     @relation("NotificationRecipient")
+  performanceReviews PerformanceReview[] @relation("PerformanceReviewer")
+  invoicesCreated  Invoice[]          @relation("InvoiceCreatedBy")
+  paymentsRecorded Payment[]          @relation("PaymentRecordedBy")
+  contractsCreated Contract[]         @relation("ContractCreatedBy")
 }
 
 model Session {
@@ -61,4 +84,565 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@index([identifier])
+}
+
+// ---------------------------------------------------------------------------
+// Vendor onboarding domain (MVP vertical slice)
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  PROCUREMENT
+  FINANCE
+  TAX
+  LEGAL
+  QUALITY
+  IT_SECURITY
+  BUSINESS
+  VENDOR
+}
+
+enum RequestStatus {
+  REQUESTED
+  IN_REVIEW
+  SHORTLISTED
+  ONBOARDING
+  COMPLETED
+  BLOCKED
+}
+
+enum RequestPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum VendorStatus {
+  DRAFT
+  ONBOARDING
+  VERIFIED
+  REJECTED
+}
+
+enum OnboardingStatus {
+  CREATED
+  IN_PROGRESS
+  INFO_SUBMITTED
+  VERIFICATION_IN_PROGRESS
+  VERIFICATION_PASSED
+  VERIFICATION_FAILED
+  IN_APPROVAL
+  CHANGES_REQUESTED
+  VERIFIED
+  REJECTED
+}
+
+enum VerificationType {
+  PAN
+  GST
+  UDYAM
+  BANK
+}
+
+enum VerificationStatus {
+  PENDING
+  PASSED
+  FAILED
+}
+
+enum ApprovalFunction {
+  FINANCE
+  TAX
+  LEGAL
+  QUALITY
+  IT_SECURITY
+}
+
+enum NotificationType {
+  APPROVAL_PENDING
+  VENDOR_ACTION_REQUIRED
+  DOCUMENT_REJECTED
+  VERIFICATION_FAILED
+  SLA_APPROACHING
+  SLA_BREACHED
+  CONTRACT_RENEWAL
+  PERFORMANCE_ISSUE
+  FINANCE_EXCEPTION
+  ERP_SYNC_FAILED
+  REMINDER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum DocumentType {
+  PAN_CARD
+  GST_CERTIFICATE
+  UDYAM_CERTIFICATE
+  BANK_PROOF
+  ARTICLES_OF_INCORPORATION
+  BUSINESS_LICENSE
+  QUALITY_CERT
+  COMPLIANCE_DOC
+  INSURANCE
+  OTHER
+}
+
+enum ContactType {
+  PRIMARY
+  FINANCE
+  QUALITY
+  COMMERCIAL
+  ESCALATION
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SupplierTier {
+  OEM
+  TIER1
+  TIER2
+  TIER3
+}
+
+enum InvitationStatus {
+  SENT
+  OPENED
+  EXPIRED
+  REVOKED
+}
+
+enum ErpStatus {
+  NOT_STARTED
+  PENDING
+  SYNCED
+  FAILED
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+  RENEWED
+}
+
+enum ObligationStatus {
+  PENDING
+  IN_PROGRESS
+  MET
+  BREACHED
+  WAIVED
+}
+
+enum InvoiceStatus {
+  RECEIVED
+  MATCHED
+  EXCEPTION
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum MatchStatus {
+  MATCHED
+  PRICE_VARIANCE
+  MISSING_PO
+  MISSING_GRN
+  DUPLICATE
+}
+
+model Vendor {
+  id           String       @id @default(cuid())
+  legalName    String
+  displayName  String?
+  category     String?
+  tier         SupplierTier?
+  contactEmail String?
+  status       VendorStatus @default(DRAFT)
+  sapVendorId  String?
+
+  // ERP / SAP vendor-master handoff lifecycle
+  erpStatus        ErpStatus @default(NOT_STARTED)
+  erpProvider      String?
+  erpSyncedAt      DateTime?
+  erpLastAttemptAt DateTime?
+  erpError         String?
+
+  createdById String
+  createdBy   User   @relation("VendorCreatedBy", fields: [createdById], references: [id])
+
+  onboardingCase  OnboardingCase?
+  documents       Document[]
+  auditLogs       AuditLog[]
+  invitations     VendorInvitation[]
+  businessRequest BusinessRequest?
+  contacts        VendorContact[]
+  notifications   Notification[]
+  performanceReviews PerformanceReview[]
+  invoices        Invoice[]
+  payments        Payment[]
+  contracts       Contract[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdById])
+}
+
+model Contract {
+  id       String @id @default(cuid())
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  title             String
+  contractType      String?
+  startDate         DateTime
+  endDate           DateTime
+  value             Decimal?       @db.Decimal(14, 2)
+  currency          String         @default("INR")
+  status            ContractStatus @default(DRAFT)
+  autoRenew         Boolean        @default(false)
+  renewalNoticeDays Int            @default(30)
+  terms             String? // dummy T&C body
+
+  createdById String
+  createdBy   User   @relation("ContractCreatedBy", fields: [createdById], references: [id])
+  obligations Obligation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vendorId])
+  @@index([status])
+}
+
+model Obligation {
+  id         String @id @default(cuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  description String
+  dueDate     DateTime?
+  status      ObligationStatus @default(PENDING)
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contractId])
+}
+
+model Invoice {
+  id       String @id @default(cuid())
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  invoiceNumber String
+  invoiceDate   DateTime
+  dueDate       DateTime?
+  currency      String        @default("INR")
+  subtotal      Decimal       @db.Decimal(14, 2)
+  taxAmount     Decimal       @default(0) @db.Decimal(14, 2)
+  totalAmount   Decimal       @db.Decimal(14, 2)
+  status        InvoiceStatus @default(RECEIVED)
+
+  // 3-way match reference values (entered from the ERP: PO + goods receipt)
+  poNumber  String?
+  poAmount  Decimal? @db.Decimal(14, 2)
+  grnNumber String?
+  grnAmount Decimal? @db.Decimal(14, 2)
+
+  // Derived reconciliation outcome
+  matchStatus     MatchStatus?
+  varianceAmount  Decimal?     @db.Decimal(14, 2)
+  note            String?
+
+  // Tax + settlement (Phase 8)
+  gstRate    Decimal? @db.Decimal(5, 2)
+  tdsRate    Decimal? @db.Decimal(5, 2)
+  tdsAmount  Decimal? @db.Decimal(14, 2)
+  netPayable Decimal? @db.Decimal(14, 2)
+  amountPaid Decimal  @default(0) @db.Decimal(14, 2)
+
+  createdById String
+  createdBy   User   @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  payments    Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vendorId, invoiceNumber])
+  @@index([vendorId])
+  @@index([status])
+}
+
+model Payment {
+  id        String @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  vendorId  String
+  vendor    Vendor  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  // A bookkeeping record of a payment made in the bank/ERP — not a live transfer.
+  amount      Decimal  @db.Decimal(14, 2)
+  paymentDate DateTime
+  method      String
+  reference   String?
+  note        String?
+
+  recordedById String
+  recordedBy   User   @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([vendorId])
+}
+
+model PerformanceReview {
+  id       String @id @default(cuid())
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  period              String // e.g. "2026-Q2"
+  qualityScore        Int // 0-100, recorded from real quality data
+  deliveryScore       Int // 0-100 (OTIF)
+  costScore           Int // 0-100
+  responsivenessScore Int // 0-100
+  overallScore        Int // DERIVED weighted average, snapshotted by the service
+
+  // Optional supporting evidence (the actual measured inputs)
+  ppm         Int?
+  otifPercent Int?
+  incidents   Int?
+  note        String?
+
+  reviewedById String
+  reviewedBy   User   @relation("PerformanceReviewer", fields: [reviewedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vendorId, period])
+  @@index([vendorId])
+}
+
+model OnboardingCase {
+  id       String           @id @default(cuid())
+  vendorId String           @unique
+  vendor   Vendor           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  status   OnboardingStatus @default(CREATED)
+
+  // Company details submitted by the vendor
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  addressLine1 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String?
+
+  // Statutory / tax identifiers
+  pan   String?
+  gstin String?
+  udyam String?
+
+  // Bank details
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankName          String?
+
+  // Business / capability profile
+  tradeName               String?
+  website                 String?
+  corporateAddress        String?
+  businessType            String?
+  ownershipStructure      String?
+  products                String?
+  components              String?
+  manufacturingCapability String?
+  annualCapacity          String?
+  leadTimeDays            Int?
+  qualityCertifications   String?
+  complianceNotes         String?
+
+  submittedAt    DateTime?
+  verifiedAt     DateTime?
+  currentBlocker String?
+
+  verificationChecks VerificationCheck[]
+  approvalTasks      ApprovalTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model VerificationCheck {
+  id               String             @id @default(cuid())
+  onboardingCaseId String
+  onboardingCase   OnboardingCase     @relation(fields: [onboardingCaseId], references: [id], onDelete: Cascade)
+  type             VerificationType
+  status           VerificationStatus @default(PENDING)
+  provider         String
+  reference        String?
+  message          String?
+  result           Json?
+  checkedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([onboardingCaseId, type])
+  @@index([onboardingCaseId])
+}
+
+model ApprovalTask {
+  id               String           @id @default(cuid())
+  onboardingCaseId String
+  onboardingCase   OnboardingCase   @relation(fields: [onboardingCaseId], references: [id], onDelete: Cascade)
+  function         ApprovalFunction
+  status           ApprovalStatus   @default(PENDING)
+
+  decidedById String?
+  decidedBy   User?     @relation("ApprovalDecidedBy", fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([onboardingCaseId, function])
+  @@index([onboardingCaseId])
+  @@index([function, status])
+}
+
+model Document {
+  id         String       @id @default(cuid())
+  vendorId   String
+  vendor     Vendor       @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  type       DocumentType
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  dataBase64 String         @db.Text
+  status     DocumentStatus @default(PENDING)
+  reviewNote String?
+  reviewedAt DateTime?
+  expiryDate DateTime?
+
+  uploadedById String?
+  uploadedBy   User?   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
+
+  @@index([vendorId])
+}
+
+model AuditLog {
+  id               String  @id @default(cuid())
+  vendorId         String?
+  vendor           Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  onboardingCaseId String?
+  actorId          String?
+  actor            User?   @relation("AuditActor", fields: [actorId], references: [id])
+  action           String
+  detail           Json?
+  createdAt        DateTime @default(now())
+
+  @@index([vendorId])
+  @@index([onboardingCaseId])
+}
+
+model VendorInvitation {
+  id        String           @id @default(cuid())
+  vendorId  String
+  vendor    Vendor           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  tokenHash String           @unique
+  status    InvitationStatus @default(SENT)
+  email     String
+  expiresAt DateTime
+  openedAt  DateTime?
+  revokedAt DateTime?
+
+  sentById String
+  sentBy   User   @relation("InvitationSentBy", fields: [sentById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vendorId])
+  @@index([status])
+}
+
+model BusinessRequest {
+  id                    String          @id @default(cuid())
+  vendorName            String
+  category              String?
+  vendorType            String?
+  priority              RequestPriority @default(MEDIUM)
+  businessJustification String
+  businessRequirement   String?
+  status                RequestStatus   @default(REQUESTED)
+  blockedReason         String?
+
+  requestedById String
+  requestedBy   User   @relation("RequestedBy", fields: [requestedById], references: [id])
+
+  vendorId String? @unique
+  vendor   Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([requestedById])
+}
+
+model VendorContact {
+  id       String      @id @default(cuid())
+  vendorId String
+  vendor   Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  type     ContactType
+  name     String
+  email    String?
+  phone    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vendorId, type])
+  @@index([vendorId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  body        String?
+  vendorId    String?
+  vendor      Vendor?          @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  relatedType String?
+  relatedId   String?
+  read        Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([vendorId])
 }

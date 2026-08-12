@@ -17,7 +17,7 @@ export function Home() {
   return (
     <main className="shell">
       <section className="card">
-        <p className="eyebrow">Vendor Management</p>
+        <p className="eyebrow">Vendrax</p>
         <h1>Start with a clear view of your vendors.</h1>
         <p className="summary">The application scaffold is ready for vendor, contract, document, and compliance features.</p>
         <button type="button" onClick={checkApi}>Check API</button>
