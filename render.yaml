@@ -1,0 +1,23 @@
+# Render Blueprint for Vendrax.
+# Deploy: Render Dashboard -> New -> Blueprint -> connect this GitHub repo.
+# Render reads this file, builds the Dockerfile, and creates the web service.
+# You only need to fill the three secrets marked `sync: false` in the dashboard;
+# BETTER_AUTH_URL and CORS_ORIGIN auto-derive from RENDER_EXTERNAL_URL at runtime.
+services:
+  - type: web
+    name: vendrax
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # bump to `starter` for always-on (free spins down when idle)
+    healthCheckPath: /api/health
+    autoDeploy: true      # redeploy on every push to the connected branch
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- Secrets: paste these in the Render dashboard (never commit them) ---
+      - key: DATABASE_URL          # Neon pooled connection string
+        sync: false
+      - key: DIRECT_URL            # Neon direct (non-pooled) string, for prisma migrate
+        sync: false
+      - key: BETTER_AUTH_SECRET    # a long random string (>= 32 chars)
+        sync: false

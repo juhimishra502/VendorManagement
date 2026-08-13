@@ -18,8 +18,15 @@ const testDefaults = process.env.NODE_ENV === "test"
   ? { DATABASE_URL: "postgresql://localhost/test", BETTER_AUTH_SECRET: "test-secret-that-is-at-least-32-characters-long" }
   : {};
 
+// On Render the public https URL is injected as RENDER_EXTERNAL_URL. Use it as
+// the default auth/CORS origin so a Render deploy only needs the DB + secret set
+// (explicit BETTER_AUTH_URL / CORS_ORIGIN still win if provided).
+const renderUrl = process.env.RENDER_EXTERNAL_URL;
+const renderDefaults = renderUrl ? { BETTER_AUTH_URL: renderUrl, CORS_ORIGIN: renderUrl } : {};
+
 const environment = {
   ...testDefaults,
+  ...renderDefaults,
   ...process.env,
   DATABASE_URL: process.env.DATABASE_URL?.replace(/^["']|["']$/g, ""),
 };
