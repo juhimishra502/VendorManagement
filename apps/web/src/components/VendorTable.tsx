@@ -38,12 +38,12 @@ function Select({
   options: { value: string; label: string }[];
 }) {
   return (
-    <label className="text-xs text-slate-500">
+    <label className="w-full text-xs text-slate-500 sm:w-auto">
       <span className="mb-1 block font-medium uppercase tracking-wide">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
+        className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm text-slate-800 sm:w-auto sm:py-1.5"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -84,14 +84,14 @@ export function VendorTable({ vendors }: { vendors: VendorSummaryDTO[] }) {
 
   return (
     <Card className="p-0">
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
-        <label className="text-xs text-slate-500">
+      <div className="flex flex-col items-stretch gap-3 border-b border-slate-100 p-4 sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="w-full text-xs text-slate-500 sm:w-auto">
           <span className="mb-1 block font-medium uppercase tracking-wide">Search</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Vendor name or id"
-            className="w-56 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm sm:w-56 sm:py-1.5"
           />
         </label>
         <Select
@@ -129,7 +129,7 @@ export function VendorTable({ vendors }: { vendors: VendorSummaryDTO[] }) {
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
@@ -202,6 +202,63 @@ export function VendorTable({ vendors }: { vendors: VendorSummaryDTO[] }) {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: each vendor row becomes a card */}
+      <div className="divide-y divide-slate-100 md:hidden">
+        {rows.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-400">No vendors match these filters.</p>
+        ) : (
+          rows.map((v) => (
+            <div key={v.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <Link to={`/vendors/${v.id}`} className="font-semibold text-indigo-600">
+                  {v.legalName}
+                </Link>
+                <StatusBadge status={v.onboardingStatus} />
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                {v.tier ? <Badge tone="neutral">{supplierTierLabels[v.tier]}</Badge> : null}
+                {v.category ? <span>{v.category}</span> : null}
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">Progress</dt>
+                  <dd className="mt-0.5 font-medium text-slate-800">{v.progressPercent}%</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">Verification</dt>
+                  <dd className="mt-0.5 font-medium text-slate-800">
+                    {v.totalChecks ? `${v.completedChecks}/${v.totalChecks}` : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">Docs</dt>
+                  <dd className="mt-0.5 font-medium text-slate-800">
+                    {v.requiredDocsUploaded}/{v.requiredDocsTotal}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">SLA</dt>
+                  <dd className="mt-0.5 flex items-center gap-1.5 font-medium text-slate-800">
+                    <span className={`h-2 w-2 rounded-full ${slaDot[v.slaStatus] ?? "bg-slate-300"}`} />
+                    {v.onboardingAgeDays}d
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs uppercase tracking-wide text-slate-400">Current action</dt>
+                  <dd className="mt-0.5 text-slate-700">{v.pendingActions}</dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                <span>Updated {new Date(v.updatedAt).toLocaleDateString()}</span>
+                <Link to={`/vendors/${v.id}`} className="font-semibold text-indigo-600">
+                  View vendor →
+                </Link>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </Card>
   );

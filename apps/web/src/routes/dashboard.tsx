@@ -27,9 +27,9 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Procurement control tower</h1>
+          <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Procurement control tower</h1>
           <p className="text-sm text-slate-500">Where every vendor is, what’s blocking them, and who needs to act.</p>
         </div>
         {canCreateVendor(user?.role) && (
@@ -71,8 +71,8 @@ export function VendorsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900">Vendors</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Vendors</h1>
         {canCreateVendor(user?.role) && (
           <Link to="/vendors/new">
             <Button>+ New vendor</Button>

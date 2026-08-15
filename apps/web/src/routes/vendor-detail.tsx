@@ -156,7 +156,7 @@ export function VendorDetailPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{vendor.legalName}</h1>
+            <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">{vendor.legalName}</h1>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
               {vendor.tier && <Badge tone="info">{supplierTierLabels[vendor.tier]}</Badge>}
               <span>{vendor.category ?? "Uncategorised"}</span>
@@ -177,11 +177,11 @@ export function VendorDetailPage() {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex flex-wrap gap-1 border-b border-slate-200">
+      {/* Tab bar — horizontally scrollable on small screens (never wraps) */}
+      <div className="no-scrollbar flex gap-1 overflow-x-auto border-b border-slate-200">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium ${tab === t.key ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
             {t.label}
           </button>
         ))}
@@ -602,14 +602,16 @@ function FinanceTab({ vendor, invoices, contracts, setTab }: { vendor: VendorDet
 
   return (
     <div className="space-y-5">
-      {/* Finance sub-navigation (persistent) */}
-      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-        {subtabs.map((t) => (
-          <button key={t.key} onClick={() => setFin(t.key)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${fin === t.key ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-800"}`}>
-            {t.label}
-          </button>
-        ))}
+      {/* Finance sub-navigation (persistent, scrolls horizontally on mobile) */}
+      <div className="no-scrollbar overflow-x-auto">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+          {subtabs.map((t) => (
+            <button key={t.key} onClick={() => setFin(t.key)}
+              className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition sm:py-1.5 ${fin === t.key ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-800"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {fin === "overview" && <FinanceOverviewSub vendor={vendor} invoices={invoices} contracts={contracts} ledger={ledger} setFin={setFin} setTab={setTab} />}
