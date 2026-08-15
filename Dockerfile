@@ -59,10 +59,12 @@ COPY --from=backend-build /app/packages/shared/dist/ packages/shared/dist/
 COPY --from=backend-build /app/packages/db/dist/ packages/db/dist/
 COPY --from=backend-build /app/apps/api/dist/ apps/api/dist/
 COPY --from=frontend-build /app/apps/web/dist/ apps/api/frontend/
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3001
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=packages/db/prisma/schema.prisma && node apps/api/dist/index.js"]
+# Entrypoint normalizes DB URLs (strips stray quotes) then migrates + starts.
+CMD ["sh", "./docker-entrypoint.sh"]
